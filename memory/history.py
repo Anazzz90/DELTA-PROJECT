@@ -96,6 +96,7 @@ class HistoryStore:
             ranked_hypotheses=output.ranked_hypotheses          if output else None,
             acknowledged_weaknesses=output.acknowledged_weaknesses if output else None,
             final_score=scoring_result.final_score if scoring_result else None,
+            overconfident=scoring_result.overconfident if scoring_result else None,
             cost_usd=agent_result.cost_usd,
             latency_ms=agent_result.latency_ms,
             total_tokens=agent_result.total_tokens,
@@ -220,3 +221,59 @@ class HistoryStore:
                     for a in agent_rows
                 ],
             }
+
+    async def get_agent_performance_stats(self, agent_name: Optional[str] = None) -> dict:
+        """
+        Checkpoint 21 — Aggregate historical performance per agent, across
+        every past query.
+
+        Args:
+            agent_name: If given, only that agent's rows are queried.
+                        Otherwise stats are computed for every agent seen.
+
+        Returns:
+            dict mapping agent_name -> {
+                "queries_run":     int,    total rows for this agent
+                "success_rate":    float,  fraction of runs that succeeded
+                "avg_confidence":  float,  mean confidence_score (successful runs)
+                "avg_final_score": float,  mean final_score (successful, scored runs)
+                "flagged_count":   int,    runs where the scoring engine flagged overconfidence
+                "accuracy_rate":   float,  1 - (flagged_count / successful runs) — a calibration
+                                           proxy, not "correctness" (there's no ground truth to
+                                           grade reasoning quality against)
+            }
+        """
+        async with get_session() as session:
+            stmt = select(AgentOutputRow)
+            if agent_name:
+                stmt = stmt.where(AgentOutputRow.agent_name == agent_name)
+            result = await session.execute(stmt)
+            rows = result.scalars().all()
+
+        grouped: dict[str, list[AgentOutputRow]] = {}
+        for row in rows:
+            grouped.setdefault(row.agent_name, []).append(row)
+
+        stats: dict[str, dict] = {}
+        for name, agent_rows in grouped.items():
+            total = len(agent_rows)
+            succeeded = [r for r in agent_rows if r.success]
+            confidences = [r.confidence_score for r in succeeded if r.confidence_score is not None]
+            final_scores = [r.final_score for r in succeeded if r.final_score is not None]
+            flagged = sum(1 for r in succeeded if r.overconfident)
+
+            stats[name] = {
+                "queries_run":     total,
+                "success_rate":    round(len(succeeded) / total, 4) if total else 0.0,
+                "avg_confidence":  round(sum(confidences) / len(confidences), 4) if confidences else 0.0,
+                "avg_final_score": round(sum(final_scores) / len(final_scores), 4) if final_scores else 0.0,
+                "flagged_count":   flagged,
+                "accuracy_rate":   round(1 - (flagged / len(succeeded)), 4) if succeeded else 0.0,
+            }
+
+        if agent_name:
+            return stats.get(agent_name, {
+                "queries_run": 0, "success_rate": 0.0, "avg_confidence": 0.0,
+                "avg_final_score": 0.0, "flagged_count": 0, "accuracy_rate": 0.0,
+            })
+        return stats

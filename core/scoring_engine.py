@@ -301,3 +301,87 @@ class ScoringEngine:
             )
         with open(path, encoding="utf-8") as f:
             return yaml.safe_load(f)
+
+
+# =============================================================================
+# Agent Performance Tracker — Checkpoint 21
+# =============================================================================
+# Reads each agent's historical scores from PostgreSQL and computes a
+# per-agent weight multiplier that down-weights agents with a track record
+# of overconfidence. Applied ON TOP OF (not instead of) the per-query
+# ScoringResult.final_score the Aggregator already weights by — this module
+# adjusts final_score before it reaches core/aggregator.py, so the existing
+# weighted-consensus math there needs zero changes to pick up the historical
+# adjustment.
+
+@dataclass
+class AgentPerformanceProfile:
+    """One agent's aggregated historical performance."""
+    agent_name:        str
+    queries_run:        int
+    avg_confidence:      float
+    avg_final_score:     float
+    accuracy_rate:       float   # 1 - overconfidence rate (see get_agent_performance_stats)
+    flagged_count:       int
+    weight_multiplier:   float   # what get_weight_multiplier() would return for this profile
+
+
+class AgentPerformanceTracker:
+    """
+    Checkpoint 21 — dynamic scoring weight adjustment based on an agent's
+    calibration track record.
+
+    An agent needs at least MIN_QUERIES_FOR_ADJUSTMENT past results before
+    any adjustment applies — a single unlucky query shouldn't tank an
+    agent's weight. Once there's enough history, an agent flagged as
+    overconfident more than OVERCONFIDENCE_RATE_THRESHOLD of the time gets
+    scaled down, linearly, down to a floor of MIN_WEIGHT_MULTIPLIER (an
+    agent is never fully zeroed out — it may still be right).
+    """
+
+    MIN_QUERIES_FOR_ADJUSTMENT = 3
+    OVERCONFIDENCE_RATE_THRESHOLD = 0.5
+    MIN_WEIGHT_MULTIPLIER = 0.5
+
+    async def get_profile(self, agent_name: str) -> AgentPerformanceProfile:
+        # Deferred import: memory.history imports ScoringResult from this
+        # module at its top level, so importing HistoryStore up there would
+        # be a circular import. By the time this method actually runs (long
+        # after both modules have finished loading), it's safe.
+        from memory.history import HistoryStore
+
+        stats = await HistoryStore().get_agent_performance_stats(agent_name)
+        return AgentPerformanceProfile(
+            agent_name=agent_name,
+            queries_run=stats["queries_run"],
+            avg_confidence=stats["avg_confidence"],
+            avg_final_score=stats["avg_final_score"],
+            accuracy_rate=stats["accuracy_rate"],
+            flagged_count=stats["flagged_count"],
+            weight_multiplier=self._compute_multiplier(stats),
+        )
+
+    async def get_weight_multiplier(self, agent_name: str) -> float:
+        """The single number to multiply this agent's current-query final_score by."""
+        from memory.history import HistoryStore
+
+        stats = await HistoryStore().get_agent_performance_stats(agent_name)
+        return self._compute_multiplier(stats)
+
+    @classmethod
+    def _compute_multiplier(cls, stats: dict) -> float:
+        if stats["queries_run"] < cls.MIN_QUERIES_FOR_ADJUSTMENT:
+            return 1.0  # not enough history to judge yet
+
+        overconfidence_rate = 1.0 - stats["accuracy_rate"]
+        if overconfidence_rate <= cls.OVERCONFIDENCE_RATE_THRESHOLD:
+            return 1.0  # calibrated well enough — no adjustment
+
+        # Linearly scale down as overconfidence_rate goes from the
+        # threshold (multiplier 1.0) to 1.0 / fully overconfident
+        # (multiplier MIN_WEIGHT_MULTIPLIER).
+        span = 1.0 - cls.OVERCONFIDENCE_RATE_THRESHOLD
+        over = overconfidence_rate - cls.OVERCONFIDENCE_RATE_THRESHOLD
+        fraction = min(1.0, over / span) if span > 0 else 1.0
+        multiplier = 1.0 - fraction * (1.0 - cls.MIN_WEIGHT_MULTIPLIER)
+        return round(multiplier, 4)

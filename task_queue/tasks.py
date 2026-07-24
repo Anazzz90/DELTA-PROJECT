@@ -21,7 +21,7 @@ from agents.skeptic import SkepticAgent
 from core.aggregator import Aggregator
 from core.conflict_detector import ConflictDetector
 from core.pipeline import Pipeline
-from core.scoring_engine import ScoringEngine
+from core.scoring_engine import AgentPerformanceTracker, ScoringEngine
 from memory.history import HistoryStore
 from memory.vector_store import VectorStore
 from core.research_engine import ResearchEngine
@@ -52,7 +52,7 @@ def run_pipeline_task(
 
     # ── Semantic cache check (Checkpoint 18) ───────────────────────────────────
     cache = SemanticCache()
-    cached_result = cache.get(question)
+    cached_result = cache.get(question, selected_agents, domain_profile, meta_ai_enabled)
     if cached_result is not None:
         return cached_result
 
@@ -75,6 +75,16 @@ def run_pipeline_task(
             scoring_engine.score(r.output, fact_set, r.agent_name)
             for r in pipeline_result.successful_results
         ]
+
+        # 2b. Historical performance adjustment (Checkpoint 21) — scales each
+        # agent's final_score by its track record before it reaches conflict
+        # detection / aggregation, both of which already weight by
+        # final_score, so no changes needed there to pick this up.
+        tracker = AgentPerformanceTracker()
+        for sr in scoring_results:
+            multiplier = await tracker.get_weight_multiplier(sr.agent_name)
+            if multiplier != 1.0:
+                sr.final_score = round(sr.final_score * multiplier, 4)
 
         # 3. Conflict & Aggregation
         conflict_detector = ConflictDetector()
@@ -186,7 +196,7 @@ def run_pipeline_task(
             "pipeline_latency_ms": elapsed_ms,
             "cache_hit": False,
         }
-        cache.set(question, result)
+        cache.set(question, selected_agents, result, domain_profile, meta_ai_enabled)
         return result
 
     return asyncio.run(_run())

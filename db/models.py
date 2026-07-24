@@ -75,6 +75,7 @@ class AgentOutputRow(Base):
     ranked_hypotheses:      Mapped[list|None]  = mapped_column(JSON,      nullable=True)
     acknowledged_weaknesses:Mapped[list|None]  = mapped_column(JSON,      nullable=True)
     final_score:            Mapped[float|None] = mapped_column(Float,     nullable=True)
+    overconfident:          Mapped[bool|None]  = mapped_column(Boolean,   nullable=True)
     cost_usd:               Mapped[float]    = mapped_column(Float,       nullable=False, default=0.0)
     latency_ms:             Mapped[float]    = mapped_column(Float,       nullable=False, default=0.0)
     total_tokens:           Mapped[int]      = mapped_column(Integer,     nullable=False, default=0)

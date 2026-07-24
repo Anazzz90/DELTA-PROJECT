@@ -106,14 +106,14 @@ def make_agent_result(name: str, driver: str = "Volume surge", success: bool = T
     )
 
 
-def make_scoring_result(name: str, score: float = 0.75) -> ScoringResult:
+def make_scoring_result(name: str, score: float = 0.75, overconfident: bool = False) -> ScoringResult:
     return ScoringResult(
         agent_name=name,
         fact_consistency_score=score,
         reasoning_depth_score=score,
         overconfidence_penalty=0.0,
         final_score=score,
-        overconfident=False,
+        overconfident=overconfident,
     )
 
 
@@ -327,3 +327,77 @@ class TestVectorStoreOperations:
         vector_store.add(query_id=1, question="Test")
         vector_store.clear()
         assert vector_store.count() == 0
+
+
+# =============================================================================
+# Checkpoint 21 — Agent Performance Stats
+# =============================================================================
+
+class TestAgentPerformanceStats:
+
+    async def test_no_history_returns_empty_dict(self, db_session):
+        stats = await db_session.get_agent_performance_stats()
+        assert stats == {}
+
+    async def test_single_agent_default_zeroed_when_queried_directly(self, db_session):
+        stats = await db_session.get_agent_performance_stats("never_run_agent")
+        assert stats["queries_run"] == 0
+        assert stats["accuracy_rate"] == 0.0
+
+    async def test_stats_aggregate_across_multiple_queries(self, db_session):
+        for i in range(3):
+            query_id = await db_session.save_query(f"Query {i}?", ["fact"])
+            result = make_agent_result("data_first")
+            scoring = make_scoring_result("data_first", score=0.6 + i * 0.1)
+            await db_session.save_agent_output(query_id, result, scoring)
+
+        stats = await db_session.get_agent_performance_stats("data_first")
+
+        assert stats["queries_run"] == 3
+        assert stats["success_rate"] == 1.0
+        assert stats["avg_final_score"] == pytest.approx((0.6 + 0.7 + 0.8) / 3)
+
+    async def test_flagged_count_reflects_overconfident_runs(self, db_session):
+        query_id = await db_session.save_query("Q1?", ["fact"])
+        await db_session.save_agent_output(
+            query_id, make_agent_result("contrarian"),
+            make_scoring_result("contrarian", overconfident=True),
+        )
+        query_id = await db_session.save_query("Q2?", ["fact"])
+        await db_session.save_agent_output(
+            query_id, make_agent_result("contrarian"),
+            make_scoring_result("contrarian", overconfident=False),
+        )
+
+        stats = await db_session.get_agent_performance_stats("contrarian")
+
+        assert stats["flagged_count"] == 1
+        assert stats["accuracy_rate"] == pytest.approx(0.5)
+
+    async def test_failed_runs_excluded_from_score_averages_but_counted(self, db_session):
+        query_id = await db_session.save_query("Q1?", ["fact"])
+        await db_session.save_agent_output(query_id, make_agent_result("skeptic", success=False))
+        query_id = await db_session.save_query("Q2?", ["fact"])
+        await db_session.save_agent_output(
+            query_id, make_agent_result("skeptic"), make_scoring_result("skeptic", score=0.8)
+        )
+
+        stats = await db_session.get_agent_performance_stats("skeptic")
+
+        assert stats["queries_run"] == 2
+        assert stats["success_rate"] == 0.5
+        assert stats["avg_final_score"] == pytest.approx(0.8)
+
+    async def test_stats_without_agent_name_returns_all_agents(self, db_session):
+        query_id = await db_session.save_query("Q1?", ["fact"])
+        await db_session.save_agent_output(
+            query_id, make_agent_result("neutral_analyst"), make_scoring_result("neutral_analyst")
+        )
+        query_id = await db_session.save_query("Q2?", ["fact"])
+        await db_session.save_agent_output(
+            query_id, make_agent_result("skeptic"), make_scoring_result("skeptic")
+        )
+
+        stats = await db_session.get_agent_performance_stats()
+
+        assert set(stats.keys()) == {"neutral_analyst", "skeptic"}

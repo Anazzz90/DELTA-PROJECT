@@ -24,10 +24,10 @@ Usage:
     from llm.cache import SemanticCache
 
     cache = SemanticCache()
-    cached = cache.get(question)          # None on a miss
+    cached = cache.get(question, selected_agents)   # None on a miss
     if cached is None:
         result = run_pipeline(...)
-        cache.set(question, result)
+        cache.set(question, selected_agents, result)
 """
 
 from __future__ import annotations
@@ -51,15 +51,24 @@ _COLLECTION_NAME = "dmars_semantic_cache"
 class SemanticCache:
     """
     Thin ChromaDB-backed cache: stores each completed query's full result
-    dict, keyed by the question's embedding. A lookup is a "hit" when the
-    closest stored question's cosine similarity meets the configured
-    threshold (default: settings.cache_similarity_threshold = 0.92).
+    dict, keyed by the question's embedding *scoped to* which agents were
+    selected (plus domain_profile and meta_ai_enabled). A lookup is a "hit"
+    only when both the scope matches exactly and the closest stored
+    question's cosine similarity meets the configured threshold (default:
+    settings.cache_similarity_threshold = 0.92).
 
-    Caches on `question` text only — a repeat question with a different
-    fact_set will still hit. This matches GPTCache's own prompt-similarity
-    model (and this checkpoint's test criteria, which only vary the
-    question wording), but is worth knowing if fact_set can vary widely
-    for the same phrasing in practice.
+    The scope match matters: without it, a query for ["contrarian"] could
+    return a cached result computed from ["data_first", "skeptic"] just
+    because the question text was similar — a real bug caught live during
+    Checkpoint 21 testing (a single-agent request returned a stale 2-agent
+    result). ChromaDB's `where` filter restricts the similarity search to
+    same-scope entries before ranking by distance, so this is a hard
+    constraint, not a fuzzy one.
+
+    Still caches on `question` text only for the fuzzy part — a repeat
+    question with a different fact_set (same agents/domain/meta) will
+    still hit. Worth knowing if fact_set can vary widely for the same
+    phrasing in practice.
     """
 
     def __init__(
@@ -82,15 +91,38 @@ class SemanticCache:
             metadata={"hnsw:space": "cosine"},
         )
 
-    def get(self, question: str) -> Optional[dict]:
+    @staticmethod
+    def _scope_key(
+        selected_agents: list[str],
+        domain_profile: Optional[str] = None,
+        meta_ai_enabled: bool = False,
+    ) -> str:
+        """A cache hit must match this exactly — different agents/domain/meta
+        settings mean a genuinely different computation, not a fuzzy variant."""
+        agents_key = ",".join(sorted(selected_agents))
+        return f"{agents_key}|{domain_profile or ''}|{meta_ai_enabled}"
+
+    def get(
+        self,
+        question: str,
+        selected_agents: list[str],
+        domain_profile: Optional[str] = None,
+        meta_ai_enabled: bool = False,
+    ) -> Optional[dict]:
         """
         Return the cached result dict for the closest semantically similar
-        question if it meets the similarity threshold, else None.
+        question *within the same scope* if it meets the similarity
+        threshold, else None.
         """
         if self._collection.count() == 0:
             return None
 
-        results = self._collection.query(query_texts=[question], n_results=1)
+        scope_key = self._scope_key(selected_agents, domain_profile, meta_ai_enabled)
+        results = self._collection.query(
+            query_texts=[question],
+            n_results=1,
+            where={"scope_key": scope_key},
+        )
         if not results["ids"][0]:
             return None
 
@@ -113,14 +145,22 @@ class SemanticCache:
         logger.info(f"Semantic cache HIT (similarity={similarity:.4f} >= {self._threshold})")
         return result
 
-    def set(self, question: str, result: dict) -> None:
-        """Store a completed query result, keyed by the question's embedding."""
+    def set(
+        self,
+        question: str,
+        selected_agents: list[str],
+        result: dict,
+        domain_profile: Optional[str] = None,
+        meta_ai_enabled: bool = False,
+    ) -> None:
+        """Store a completed query result, keyed by question embedding + scope."""
+        scope_key = self._scope_key(selected_agents, domain_profile, meta_ai_enabled)
         payload = {k: v for k, v in result.items() if k != "cache_hit"}
         doc_id = f"cache:{result.get('query_id', question)}"
         self._collection.upsert(
             ids=[doc_id],
             documents=[question],
-            metadatas=[{"result_json": json.dumps(payload)}],
+            metadatas=[{"result_json": json.dumps(payload), "scope_key": scope_key}],
         )
         logger.info(f"Semantic cache: stored result for query_id={result.get('query_id')}")
 
