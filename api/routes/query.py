@@ -21,6 +21,8 @@ from rq.job import Job, NoSuchJobError
 from api.middleware.auth import verify_api_key
 from api.middleware.rate_limiter import enforce_rate_limit
 from api.schemas.query_schema import QueryRequest
+from core.domain_profiles import is_valid_profile as is_valid_domain_profile
+from core.domain_profiles import list_profiles as list_domain_profiles
 from api.schemas.response_schema import (
     AgentOutputResponse,
     EnqueuedResponse,
@@ -76,6 +78,12 @@ async def analyze_query(request: QueryRequest) -> EnqueuedResponse:
         raise HTTPException(
             status_code=422,
             detail=f"Unknown agent(s): {unknown_agents}. Valid agents: {list(AGENT_MAPPING.keys())}",
+        )
+    if not is_valid_domain_profile(request.domain_profile):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown domain_profile '{request.domain_profile}'. "
+                   f"Valid profiles: {list_domain_profiles()}",
         )
 
     redis_conn = _get_redis()

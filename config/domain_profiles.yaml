@@ -4,9 +4,10 @@
 # Each profile adjusts agent weighting, confidence thresholds, and reasoning focus.
 #
 # Built in: Checkpoint 22 — Domain Profiles (Phase 3)
-# Used in:  core/pipeline.py, core/scoring_engine.py
-#
-# PLACEHOLDER — Full implementation in Checkpoint 22.
+# Loaded by: core/domain_profiles.py
+# Used in:   task_queue/tasks.py (agent_weights -> per-agent final_score
+#            multiplier; confidence_threshold -> caution note on the final
+#            decision), api/routes/query.py (validates domain_profile)
 
 profiles:
   intraday_trading:

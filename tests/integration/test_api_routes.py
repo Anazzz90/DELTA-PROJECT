@@ -107,6 +107,19 @@ def test_query_unknown_agent_returns_422(client):
 
 
 # =============================================================================
+# 3b. Checkpoint 22 — POST /query invalid domain_profile (400)
+# =============================================================================
+def test_query_invalid_domain_profile_returns_400(client):
+    response = client.post("/query", json={
+        "question": "Why did BTC spike?",
+        "fact_set": ["volume up"],
+        "selected_agents": ["data_first"],
+        "domain_profile": "not_a_real_profile",
+    })
+    assert response.status_code == 400
+
+
+# =============================================================================
 # 4. GET /history
 # =============================================================================
 def test_history_returns_list(client):

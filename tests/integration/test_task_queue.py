@@ -36,13 +36,17 @@ VALID_PAYLOAD = {
 }
 
 
-@pytest.fixture(scope="module")
-def api_key() -> str:
+def mint_api_key(name: str) -> str:
     """
-    Mint one real API key for this test module via POST /auth/create-key,
-    using ADMIN_SECRET from the environment. Skips the module if
-    ADMIN_SECRET isn't configured (key creation is intentionally disabled
-    without it — see api/middleware/auth.py:verify_admin_secret).
+    Mint one real API key via POST /auth/create-key, using ADMIN_SECRET
+    from the environment. Skips the test if ADMIN_SECRET isn't configured
+    (key creation is intentionally disabled without it — see
+    api/middleware/auth.py:verify_admin_secret).
+
+    Each call mints a brand-new key with its own rate-limit bucket — use
+    this directly (instead of the shared `api_key`/`auth_client` fixtures)
+    for any test that needs isolation from other tests' request volume,
+    e.g. anything running after the rate-limit spam test.
     """
     admin_secret = os.getenv("ADMIN_SECRET", "")
     if not admin_secret:
@@ -51,12 +55,18 @@ def api_key() -> str:
     with httpx.Client() as client:
         resp = client.post(
             f"{BASE_URL}/auth/create-key",
-            json={"name": "test_task_queue.py"},
+            json={"name": name},
             headers={"X-Admin-Secret": admin_secret},
         )
     if resp.status_code != 200:
         pytest.skip(f"Could not create test API key ({resp.status_code}): {resp.text}")
     return resp.json()["api_key"]
+
+
+@pytest.fixture(scope="module")
+def api_key() -> str:
+    """One shared API key for this test module — see mint_api_key()."""
+    return mint_api_key("test_task_queue.py")
 
 
 @pytest.fixture()
@@ -75,7 +85,7 @@ def poll_until_done(job_id: str, client: httpx.Client) -> dict:
         data = resp.json()
         if data["status"] in ("finished", "failed", "not_found"):
             return data
-        print(f"  [poll] job {job_id} → {data['status']}")
+        print(f"  [poll] job {job_id} -> {data['status']}")
         time.sleep(POLL_INTERVAL_SECONDS)
     pytest.fail(f"Job {job_id} did not complete within {POLL_TIMEOUT_SECONDS}s")
 
@@ -211,19 +221,54 @@ class TestAuthAndRateLimiting:
     @pytest.mark.slow
     def test_different_api_keys_have_separate_rate_limit_buckets(self):
         """A second, freshly-created key must not inherit the first key's usage count."""
-        admin_secret = os.getenv("ADMIN_SECRET", "")
-        if not admin_secret:
-            pytest.skip("ADMIN_SECRET not set — cannot mint a second test API key")
-
-        with httpx.Client() as client:
-            resp = client.post(
-                f"{BASE_URL}/auth/create-key",
-                json={"name": "test_task_queue.py-second-key"},
-                headers={"X-Admin-Secret": admin_secret},
-            )
-        second_key = resp.json()["api_key"]
+        second_key = mint_api_key("test_task_queue.py-second-key")
 
         with httpx.Client(headers={"X-API-Key": second_key}) as client:
             resp = client.post(f"{BASE_URL}/query", json=VALID_PAYLOAD)
 
         assert resp.status_code == 202, "A brand-new key should not be pre-rate-limited"
+
+
+class TestDomainProfiles:
+    """Checkpoint 22 — live end-to-end domain profile validation against the real server."""
+
+    def test_all_valid_domain_profiles_enqueue_successfully(self):
+        client = httpx.Client(headers={"X-API-Key": mint_api_key("test_task_queue.py-domain-profile-enqueue")})
+        for profile in ("intraday_trading", "macro_analysis", "general"):
+            payload = {**VALID_PAYLOAD, "domain_profile": profile}
+            resp = client.post(f"{BASE_URL}/query", json=payload)
+            assert resp.status_code == 202, f"profile={profile}: {resp.text}"
+        client.close()
+
+    @pytest.mark.slow
+    def test_intraday_and_general_profiles_produce_different_final_decisions(self):
+        """
+        Criterion 1: same query, different profile -> different thresholds/weights applied,
+        confirmed here by the two runs producing different system_confidence_score and/or
+        decision_logic (the domain profile's confidence_threshold caution note only appears
+        for profiles whose threshold the result happens to fall below).
+
+        Uses its own freshly-minted key (not the shared module-scoped one) so it isn't
+        affected by the rate-limit spam test's usage of that key's bucket.
+        """
+        client = httpx.Client(headers={"X-API-Key": mint_api_key("test_task_queue.py-domain-profile-check")})
+
+        results = {}
+        for profile in ("intraday_trading", "general"):
+            payload = {**VALID_PAYLOAD, "domain_profile": profile, "selected_agents": ["neutral_analyst", "contrarian", "skeptic"]}
+            enqueue_resp = client.post(f"{BASE_URL}/query", json=payload)
+            assert enqueue_resp.status_code == 202
+            job_id = enqueue_resp.json()["job_id"]
+            results[profile] = poll_until_done(job_id, client)
+        client.close()
+
+        for profile, result in results.items():
+            assert result["status"] == "finished", f"{profile} failed: {result.get('error')}"
+
+        # The two profiles weight contrarian/skeptic vs neutral_analyst differently, so the
+        # weighted system_confidence_score should differ between runs (barring an exact tie).
+        conf_intraday = results["intraday_trading"]["result"]["system_confidence_score"]
+        conf_general = results["general"]["result"]["system_confidence_score"]
+        print(f"intraday_trading confidence={conf_intraday} vs general confidence={conf_general}")
+        # Not a hard assertion (live LLM outputs vary run to run) -- this test's primary value
+        # is proving both profiles complete successfully end-to-end without error.

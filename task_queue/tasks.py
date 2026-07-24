@@ -27,6 +27,7 @@ from memory.vector_store import VectorStore
 from core.research_engine import ResearchEngine
 from observability.tracer import check_cost_alerts
 from llm.cache import SemanticCache
+from core.domain_profiles import get_agent_weight_multiplier, get_confidence_threshold
 
 AGENT_MAPPING = {
     "neutral_analyst": NeutralAnalyst,
@@ -86,6 +87,15 @@ def run_pipeline_task(
             if multiplier != 1.0:
                 sr.final_score = round(sr.final_score * multiplier, 4)
 
+        # 2c. Domain profile weighting (Checkpoint 22) — same mechanism as 2b,
+        # applied on top of it: intraday_trading boosts contrarian/skeptic,
+        # macro_analysis boosts neutral_analyst/data_first, general is
+        # roughly uniform. See core/domain_profiles.py for the derivation.
+        for sr in scoring_results:
+            multiplier = get_agent_weight_multiplier(domain_profile, sr.agent_name, selected_agents)
+            if multiplier != 1.0:
+                sr.final_score = round(sr.final_score * multiplier, 4)
+
         # 3. Conflict & Aggregation
         conflict_detector = ConflictDetector()
         conflict_report = conflict_detector.detect(scoring_results, pipeline_result.results)
@@ -93,6 +103,19 @@ def run_pipeline_task(
         final_decision = aggregator.aggregate(
             scoring_results, pipeline_result.results, conflict_report
         )
+
+        # 3b. Domain profile confidence threshold (Checkpoint 22) — appends a
+        # caution note to decision_logic when the system's confidence falls
+        # below what this domain considers reliable (e.g. intraday_trading's
+        # lower 0.60 bar for fast decisions vs macro_analysis's higher 0.70).
+        confidence_threshold = get_confidence_threshold(domain_profile)
+        below_threshold = final_decision.system_confidence_score < confidence_threshold
+        if below_threshold:
+            final_decision.decision_logic += (
+                f" [CAUTION: system confidence {final_decision.system_confidence_score:.2f} "
+                f"is below the '{domain_profile or 'general'}' profile's threshold "
+                f"({confidence_threshold:.2f}) — treat this conclusion cautiously.]"
+            )
 
         # 4. Meta-AI synthesis (optional)
         meta_response_obj = None
