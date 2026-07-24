@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""  # Phase 3 only
     google_api_key: str = ""
     siliconflow_api_key: str = ""
+    firecrawl_api_key: str = ""
 
     # ── Local LLMs ────────────────────────────────────────────────────────────
     ollama_base_url: str = "http://localhost:11434"
@@ -50,6 +51,9 @@ class Settings(BaseSettings):
 
     # ── Redis (Phase 2+) ──────────────────────────────────────────────────────
     redis_url: str = "redis://localhost:6379/0"
+
+    # ── Firecrawl (Checkpoint 15a) ────────────────────────────────────────────
+    firecrawl_rate_limit_per_min: int = 10
 
     # ── LangFuse (Phase 2+) ───────────────────────────────────────────────────
     langfuse_public_key: str = ""

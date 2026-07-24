@@ -9,7 +9,7 @@
 
 import asyncio
 import time
-from typing import Any
+from typing import Any, Optional
 
 from agents.contrarian import ContrarianAgent
 from agents.data_first import DataFirstAgent

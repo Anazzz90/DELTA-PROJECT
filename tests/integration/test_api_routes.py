@@ -6,7 +6,7 @@ Checkpoint 13 — FastAPI Route Integration Tests
 Tests that the API routes respond with correct status codes and shapes.
 Uses starlette TestClient without touching ChromaDB or real LLMs.
 """
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,11 +16,13 @@ from api.main import app
 
 @pytest.fixture()
 def client():
-    """Return a TestClient with DB creation and VectorStore mocked out."""
-    with (
-        patch("api.main.create_all_tables", new_callable=AsyncMock),
-        patch("api.routes.query.VectorStore", return_value=MagicMock()),
-    ):
+    """Return a TestClient with DB creation mocked out.
+
+    VectorStore is instantiated inside task_queue/tasks.py (RQ worker context),
+    not in api.routes.query — it never runs synchronously during these route
+    tests, so it doesn't need to be mocked here.
+    """
+    with patch("api.main.create_all_tables", new_callable=AsyncMock):
         with TestClient(app, raise_server_exceptions=True) as c:
             yield c
 

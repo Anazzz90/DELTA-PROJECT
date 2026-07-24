@@ -1,12 +1,14 @@
-import os
 import json
 import logging
+import time
+from collections import deque
 from typing import Optional, Any, Dict
 import aiohttp
 import asyncio
 
 from tenacity import retry, wait_exponential, stop_after_attempt
 
+from config.settings import settings
 from core.delta_protocol import DeltaProtocol
 from core.fact_validator import FactValidator
 from llm.router import LLMRouter
@@ -14,16 +16,56 @@ from redis import Redis
 
 logger = logging.getLogger(__name__)
 
+
+class RateLimiter:
+    """
+    Simple async sliding-window rate limiter (stdlib only).
+
+    Tracks call timestamps in a deque; before each call, drops timestamps
+    older than the window and — if at capacity — sleeps until the oldest
+    call ages out. Shared across scrape + search since both count against
+    the same Firecrawl account limit.
+    """
+
+    def __init__(self, max_calls: int, period_seconds: float = 60.0):
+        self.max_calls = max_calls
+        self.period_seconds = period_seconds
+        self._calls: deque[float] = deque()
+        self._lock = asyncio.Lock()
+
+    async def acquire(self) -> None:
+        async with self._lock:
+            now = time.monotonic()
+            while self._calls and now - self._calls[0] >= self.period_seconds:
+                self._calls.popleft()
+            if len(self._calls) >= self.max_calls:
+                wait_time = self.period_seconds - (now - self._calls[0])
+                if wait_time > 0:
+                    logger.info(f"Firecrawl rate limit reached, waiting {wait_time:.1f}s")
+                    await asyncio.sleep(wait_time)
+                now = time.monotonic()
+                while self._calls and now - self._calls[0] >= self.period_seconds:
+                    self._calls.popleft()
+            self._calls.append(time.monotonic())
+
+
 class ResearchEngine:
     """
     Automated research and truth-filtering pipeline using Firecrawl.
     """
     def __init__(self, redis_conn: Optional[Redis] = None):
-        self.firecrawl_key = os.getenv("FIRECRAWL_API_KEY", "")
+        self.firecrawl_key = settings.firecrawl_api_key
         self.router = LLMRouter()
         self.validator = FactValidator()
         self.protocol = DeltaProtocol()
         self.redis_conn = redis_conn
+        self._rate_limiter = RateLimiter(max_calls=settings.firecrawl_rate_limit_per_min)
+
+        if not self.firecrawl_key and settings.is_production:
+            raise RuntimeError(
+                "FIRECRAWL_API_KEY is not set. Refusing to serve mocked research "
+                "data in production — set the key or run with ENV=development."
+            )
 
     @retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=stop_after_attempt(3))
     async def _scrape_url(self, url: str) -> dict:
@@ -36,7 +78,9 @@ class ResearchEngine:
                     "metadata": {"sourceURL": url, "mocked": True}
                 }
             }
-            
+
+        await self._rate_limiter.acquire()
+
         headers = {
             "Authorization": f"Bearer {self.firecrawl_key}",
             "Content-Type": "application/json"
@@ -45,7 +89,7 @@ class ResearchEngine:
             "url": url,
             "formats": ["markdown"]
         }
-        
+
         async with aiohttp.ClientSession() as session:
             async with session.post("https://api.firecrawl.dev/v1/scrape", headers=headers, json=payload) as resp:
                 resp.raise_for_status()
@@ -68,7 +112,9 @@ class ResearchEngine:
                     }
                 ]
             }
-            
+
+        await self._rate_limiter.acquire()
+
         headers = {
             "Authorization": f"Bearer {self.firecrawl_key}",
             "Content-Type": "application/json"
@@ -78,7 +124,7 @@ class ResearchEngine:
             "limit": 3,
             "scrapeOptions": {"formats": ["markdown"]}
         }
-        
+
         async with aiohttp.ClientSession() as session:
             async with session.post("https://api.firecrawl.dev/v1/search", headers=headers, json=payload) as resp:
                 resp.raise_for_status()
@@ -229,13 +275,12 @@ class ResearchEngine:
             except Exception: pass
 
         # 1. Search web
-        print(f"DEBUG: Searching web for topic: {topic}")
+        logger.debug(f"Searching web for topic: {topic}")
         try:
             search_data = await self._search_web(topic)
             results = search_data.get("data", [])
-            print(f"DEBUG: Found {len(results)} search results")
+            logger.debug(f"Found {len(results)} search results")
         except Exception as e:
-            print(f"DEBUG: Firecrawl search FAILED: {e}")
             logger.error(f"Firecrawl search failed: {e}")
             raise RuntimeError(f"Failed to search for topic '{topic}': {e}")
 
@@ -266,7 +311,7 @@ class ResearchEngine:
             fact_set=[aggregated_markdown[:15000]],
             domain_profile=domain_profile
         )
-        print(f"DEBUG: Calling DeepSeek for fact extraction (chars={len(aggregated_markdown)})")
+        logger.debug(f"Calling DeepSeek for fact extraction (chars={len(aggregated_markdown)})")
         ext_response = self.router.call_model_direct(
             model="deepseek-ai/DeepSeek-V3",
             system_prompt=ext_prompt.system,
@@ -274,10 +319,9 @@ class ResearchEngine:
             temperature=0.0,
             timeout=120
         )
-        
+
         candidate_facts = []
         if ext_response and ext_response.success:
-            print("DEBUG: DeepSeek extraction SUCCESS")
             try:
                 raw_text = ext_response.content.strip()
                 if raw_text.startswith("```"):
@@ -285,12 +329,12 @@ class ResearchEngine:
                     raw_text = "\n".join(line for line in lines if not line.strip().startswith("```")).strip()
                 ext_json = json.loads(raw_text)
                 candidate_facts = ext_json.get("extracted_facts", [])
-                print(f"DEBUG: Extracted {len(candidate_facts)} candidate facts")
+                logger.debug(f"Extracted {len(candidate_facts)} candidate facts")
             except Exception as e:
-                print(f"DEBUG: JSON Parse FAILED: {e}")
+                logger.error(f"Failed to parse extractor JSON: {e}")
         else:
             err = ext_response.error if ext_response else "No response"
-            print(f"DEBUG: DeepSeek extraction FAILED: {err}")
+            logger.error(f"DeepSeek extraction failed: {err}")
             
         if not candidate_facts:
             candidate_facts = [f"No specific facts could be extracted for '{topic}'."]

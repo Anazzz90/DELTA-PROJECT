@@ -125,12 +125,16 @@ def make_final_decision() -> FinalDecision:
         narrative_clusters={"liquidation_cascade": ["Hypothesis 1"]},
         contributing_agents=["neutral_analyst", "data_first"],
         conflict_adjusted=False,
+        signal_summary={"positive": 2, "negative": 0},
+        net_bias="Bullish",
+        decision_logic="Majority of agents point to a liquidation cascade.",
     )
 
 
 def make_conflict_report(detected: bool = False) -> ConflictReport:
     return ConflictReport(
         conflict_detected=detected,
+        conflict_level="High Conflict" if detected else "Strong Consensus",
         conflict_type="none" if not detected else "narrative",
         conflicting_agents=[] if not detected else ["a", "b"],
         conflict_reason="No conflict" if not detected else "Opposing narratives",

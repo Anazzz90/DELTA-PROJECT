@@ -26,7 +26,7 @@ from api.schemas.response_schema import (
     MetaAIResponse,
     QueryResponse,
 )
-from task_queue.tasks import run_pipeline_task
+from task_queue.tasks import AGENT_MAPPING, run_pipeline_task
 
 router = APIRouter(tags=["Query"])
 
@@ -63,6 +63,12 @@ async def analyze_query(request: QueryRequest) -> EnqueuedResponse:
         raise HTTPException(status_code=422, detail="At least one fact must be provided")
     if not request.selected_agents:
         raise HTTPException(status_code=422, detail="At least one agent must be selected")
+    unknown_agents = [a for a in request.selected_agents if a not in AGENT_MAPPING]
+    if unknown_agents:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown agent(s): {unknown_agents}. Valid agents: {list(AGENT_MAPPING.keys())}",
+        )
 
     redis_conn = _get_redis()
     queue = Queue(QUEUE_NAME, connection=redis_conn)
