@@ -29,6 +29,21 @@ cp .env.example .env
 poetry run streamlit run dashboard/streamlit_app.py
 ```
 
+### 5. Run the API (Phase 2+)
+```bash
+# Redis + RQ worker (required)
+poetry run python task_queue/worker.py
+
+# API server
+poetry run uvicorn api.main:app --reload          # SQLite, or Postgres on Linux/macOS/Docker
+poetry run python run_server.py                    # Postgres on Windows (see run_server.py docstring)
+```
+On Windows, `uvicorn api.main:app` alone will 500 on any DB-touching route once
+`DATABASE_URL` points at PostgreSQL — psycopg's async driver needs a
+`SelectorEventLoop`, and Windows' default `ProactorEventLoop` is already
+running by the time uvicorn imports the app. `run_server.py` sets the correct
+policy before starting uvicorn. SQLite is unaffected either way.
+
 ---
 
 ## Development Phases

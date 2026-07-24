@@ -48,8 +48,11 @@ streamlit = "^1.35"
 # =============================================================================
 # CHECKPOINT 13+ — Phase 2 Backend (FastAPI, Redis, RQ)
 # Run: poetry install --with phase2
-# NOTE: asyncpg also requires C++ Build Tools on Windows.
-#       Alternative: use psycopg2-binary instead (no compilation needed).
+# NOTE (Checkpoint 15): psycopg2-binary is sync-only and does NOT work with
+#       SQLAlchemy's create_async_engine(). asyncpg needs a C++ compiler to
+#       build from source on Windows and has no prebuilt wheel for newer
+#       Python versions yet. psycopg[binary] (v3) supports async natively
+#       and ships prebuilt wheels — no compiler needed.
 # =============================================================================
 [tool.poetry.group.phase2]
 optional = true
@@ -60,6 +63,7 @@ uvicorn = {version = "^0.30", extras = ["standard"]}
 redis = "^5.0"
 rq = "^1.16"
 alembic = "^1.13"
+psycopg = {version = "^3.1", extras = ["binary", "pool"]}
 
 # =============================================================================
 # Dev tools — always installed

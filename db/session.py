@@ -24,10 +24,19 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
+
+# psycopg's async mode requires a SelectorEventLoop; Windows defaults to
+# ProactorEventLoop, which raises psycopg.InterfaceError on connect. This
+# must run before any event loop is created (i.e. at import time, here,
+# since this module is imported before the app/worker starts its loop).
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -65,7 +74,19 @@ async def create_all_tables() -> None:
     """
     Create all tables defined in db/models.py if they don't exist.
     Idempotent — safe to call on every application startup.
+
+    PostgreSQL (Checkpoint 15+): schema is owned by Alembic
+    (db/migrations/) — this is a no-op there so app startup can never
+    silently create tables Alembic doesn't know about, masking a missing
+    migration. Only runs create_all() for SQLite (Phase 1 dev convenience,
+    which has no migration tooling of its own).
     """
+    if engine.dialect.name != "sqlite":
+        logger.info(
+            f"Skipping create_all() for {engine.dialect.name} — schema is "
+            f"managed by Alembic (run: alembic upgrade head)."
+        )
+        return
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info(f"Database tables created/verified at: {DATABASE_URL}")
