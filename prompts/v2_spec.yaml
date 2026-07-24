@@ -1,6 +1,18 @@
 # DMARS v2 Agent Prompt Specification
 # Version: 2.0.0
 # Framework: Delta-First Recursive Causal Reasoning
+#
+# NOT WIRED IN (Checkpoint 20, 2026-07-25): this is an earlier exploratory
+# design for a completely different, much richer output schema (temporal
+# horizons, causal trees, portfolio instructions, manipulation metrics) --
+# incompatible with the AgentOutput schema every agent, the scoring engine,
+# conflict detector, and aggregator actually use today. No code loads this
+# file. The real, active prompts/v2/ folder (same 8 agents as v1, same
+# output schema, different reasoning instructions) is what
+# ACTIVE_PROMPT_VERSION=v2 actually loads. Left here in case this richer
+# schema is deliberately revisited later -- pairs with the also-unused
+# core/schemas_v2.py design that existed before the Checkpoint 15a-round
+# audit cleanup (removed as dead code; not reintroduced here).
 
 SYSTEM_PROMPT_TEMPLATE: |
   You are an institutional-grade {{ agent_role }}. Your objective is to process a fact set and generate a probabilistic strategic intelligence report.

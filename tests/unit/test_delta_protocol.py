@@ -304,3 +304,70 @@ class TestErrorHandling:
         for name, prompt in results.items():
             assert isinstance(prompt, RenderedPrompt)
             assert prompt.agent_name == name
+
+
+# =============================================================================
+# Checkpoint 20 — Prompt Versioning System
+# =============================================================================
+
+class TestPromptVersioning:
+    """
+    Coverage (maps exactly to Checkpoint 20 test criteria):
+      Criterion 1 — ACTIVE_PROMPT_VERSION=v1 -> system uses v1 prompts
+      Criterion 2 — ACTIVE_PROMPT_VERSION=v2 -> system uses v2 prompts (different behavior)
+      Criterion 3 — Missing version folder -> falls back to v1 with a warning (no crash)
+      Criterion 4 — Same query on v1 vs v2 -> rendered prompts differ (proves versioning works)
+    """
+
+    def test_default_active_version_loads_v1(self, protocol, sample_question, sample_facts):
+        prompt = protocol.render("neutral_analyst", sample_question, sample_facts)
+        assert prompt.version == "v1"
+
+    def test_switching_to_v2_loads_v2_prompts(
+        self, protocol, sample_question, sample_facts, monkeypatch
+    ):
+        from config.settings import settings
+        monkeypatch.setattr(settings, "active_prompt_version", "v2")
+
+        prompt = protocol.render("neutral_analyst", sample_question, sample_facts)
+
+        assert prompt.version == "v2"
+        assert "V2 AMENDMENTS" in prompt.system
+
+    def test_v1_and_v2_prompts_differ_for_the_same_query(
+        self, protocol, sample_question, sample_facts, monkeypatch
+    ):
+        from config.settings import settings
+
+        monkeypatch.setattr(settings, "active_prompt_version", "v1")
+        v1_prompt = protocol.render("neutral_analyst", sample_question, sample_facts)
+
+        monkeypatch.setattr(settings, "active_prompt_version", "v2")
+        v2_prompt = protocol.render("neutral_analyst", sample_question, sample_facts)
+
+        assert v1_prompt.system != v2_prompt.system
+        assert "NUMERIC FACT-FIT SCORING" in v2_prompt.system
+        assert "NUMERIC FACT-FIT SCORING" not in v1_prompt.system
+
+    def test_missing_version_folder_falls_back_to_v1_with_warning(
+        self, protocol, sample_question, sample_facts, monkeypatch, caplog
+    ):
+        import logging
+        from config.settings import settings
+
+        monkeypatch.setattr(settings, "active_prompt_version", "v3-does-not-exist")
+
+        with caplog.at_level(logging.WARNING, logger="core.delta_protocol"):
+            prompt = protocol.render("neutral_analyst", sample_question, sample_facts)
+
+        assert prompt is not None  # did not crash
+        assert "falling back to 'v1'" in caplog.text
+
+    def test_all_v2_agent_files_exist_matching_v1(self):
+        v1_agents = set(DeltaProtocol().list_available_agents())
+        from config.settings import settings
+        # list_available_agents() reads settings.prompts_dir, which follows
+        # active_prompt_version -- check the v2 folder directly instead.
+        v2_dir = settings.prompts_dir.parent / "v2"
+        v2_agents = {p.stem for p in v2_dir.glob("*.yaml")}
+        assert v1_agents == v2_agents, "every v1 agent prompt must have a v2 counterpart"

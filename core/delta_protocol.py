@@ -29,6 +29,7 @@ Can also be run directly for a quick sanity check:
 
 from __future__ import annotations
 
+import logging
 import yaml
 from dataclasses import dataclass
 from pathlib import Path
@@ -36,6 +37,10 @@ from pathlib import Path
 from jinja2 import Environment, StrictUndefined, TemplateError
 
 from config.settings import settings
+
+logger = logging.getLogger(__name__)
+
+_FALLBACK_VERSION = "v1"
 
 
 # =============================================================================
@@ -155,9 +160,10 @@ class DeltaProtocol:
             for name in agent_names
         }
 
-    def get_prompt_path(self, agent_name: str) -> Path:
+    def get_prompt_path(self, agent_name: str, version: str | None = None) -> Path:
         """Returns the filesystem path for an agent's YAML prompt file."""
-        return settings.prompts_dir / f"{agent_name}.yaml"
+        v = version or settings.active_prompt_version
+        return settings.prompts_dir.parent / v / f"{agent_name}.yaml"
 
     def list_available_agents(self) -> list[str]:
         """Returns a list of available agent names based on YAML files present."""
@@ -168,8 +174,27 @@ class DeltaProtocol:
     # =========================================================================
 
     def _load_yaml(self, agent_name: str) -> dict:
-        """Load and parse the YAML file for agent_name."""
-        path = self.get_prompt_path(agent_name)
+        """
+        Load and parse the YAML file for agent_name.
+
+        Checkpoint 20 — if the active prompt version is missing the file
+        (e.g. an incomplete or deleted version folder), falls back to
+        _FALLBACK_VERSION ("v1") with a logged warning rather than
+        crashing the whole pipeline over one missing prompt variant.
+        """
+        active_version = settings.active_prompt_version
+        path = self.get_prompt_path(agent_name, active_version)
+
+        if not path.exists() and active_version != _FALLBACK_VERSION:
+            fallback_path = self.get_prompt_path(agent_name, _FALLBACK_VERSION)
+            if fallback_path.exists():
+                logger.warning(
+                    f"Prompt version '{active_version}' has no file for agent "
+                    f"'{agent_name}' (expected {path}) — falling back to "
+                    f"'{_FALLBACK_VERSION}': {fallback_path}"
+                )
+                path = fallback_path
+
         if not path.exists():
             raise PromptNotFoundError(
                 f"Prompt file not found for agent '{agent_name}'.\n"
