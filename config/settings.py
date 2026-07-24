@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     admin_secret: str = ""              # gates POST /auth/create-key; empty = disabled
     rate_limit_per_minute: int = 10     # per-API-key request cap
 
+    # ── Qdrant (Checkpoint 23 — production vector store) ─────────────────────
+    qdrant_url: str = "http://localhost:6333"
+
     # ── Computed Properties ───────────────────────────────────────────────────
     @property
     def prompts_dir(self) -> Path:

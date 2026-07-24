@@ -81,6 +81,16 @@ optional = true
 langfuse = "^4.0"
 
 # =============================================================================
+# CHECKPOINT 23 — Qdrant Vector DB (Production)
+# Run: poetry install --with production
+# =============================================================================
+[tool.poetry.group.production]
+optional = true
+
+[tool.poetry.group.production.dependencies]
+qdrant-client = {version = "^1.18", extras = ["fastembed"]}
+
+# =============================================================================
 # Dev tools — always installed
 # =============================================================================
 [tool.poetry.group.dev.dependencies]
