@@ -26,6 +26,7 @@ from memory.history import HistoryStore
 from memory.vector_store import VectorStore
 from core.research_engine import ResearchEngine
 from observability.tracer import check_cost_alerts
+from llm.cache import SemanticCache
 
 AGENT_MAPPING = {
     "neutral_analyst": NeutralAnalyst,
@@ -48,6 +49,12 @@ def run_pipeline_task(
     Returns the full structured result dict that mirrors QueryResponse.
     """
     t_start = time.perf_counter()
+
+    # ── Semantic cache check (Checkpoint 18) ───────────────────────────────────
+    cache = SemanticCache()
+    cached_result = cache.get(question)
+    if cached_result is not None:
+        return cached_result
 
     # ── Build agent list ──────────────────────────────────────────────────────
     agents_to_run = [
@@ -160,7 +167,7 @@ def run_pipeline_task(
                 out["final_score"] = sr.final_score
             agent_outputs.append(out)
 
-        return {
+        result = {
             "query_id": query_id,
             "question": question,
             "system_main_driver": final_decision.system_main_driver,
@@ -177,7 +184,10 @@ def run_pipeline_task(
             "meta_ai_result": meta_response_obj,
             "total_cost_usd": total_cost_usd,
             "pipeline_latency_ms": elapsed_ms,
+            "cache_hit": False,
         }
+        cache.set(question, result)
+        return result
 
     return asyncio.run(_run())
 

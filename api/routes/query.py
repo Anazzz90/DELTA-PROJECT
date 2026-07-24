@@ -157,6 +157,7 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
             meta_ai_result=meta_ai_result,
             total_cost_usd=raw["total_cost_usd"],
             pipeline_latency_ms=raw["pipeline_latency_ms"],
+            cache_hit=raw.get("cache_hit", False),
         )
         return JobStatusResponse(job_id=job_id, status="finished", result=full_result)
 

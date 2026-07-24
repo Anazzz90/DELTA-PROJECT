@@ -45,6 +45,7 @@ class QueryResponse(BaseModel):
     meta_ai_result: Optional[MetaAIResponse] = None
     total_cost_usd: float
     pipeline_latency_ms: float
+    cache_hit: bool = False
 
 
 # ── Checkpoint 14 — Job Status Schema ────────────────────────────────────────
