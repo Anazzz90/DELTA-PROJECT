@@ -25,6 +25,7 @@ from core.scoring_engine import ScoringEngine
 from memory.history import HistoryStore
 from memory.vector_store import VectorStore
 from core.research_engine import ResearchEngine
+from observability.tracer import check_cost_alerts
 
 AGENT_MAPPING = {
     "neutral_analyst": NeutralAnalyst,
@@ -96,9 +97,18 @@ def run_pipeline_task(
                     "minority_views": mo.minority_views,
                     "final_confidence": mo.final_confidence,
                     "supporting_agents": mo.supporting_agents,
+                    "cost_usd": meta_result.cost_usd,
                 }
 
-        # 5. Storage
+        # 5. Cost alerting (Checkpoint 17) — total includes Meta-AI's synthesis
+        # call, which is a separate LLM call outside the 5-agent Pipeline and
+        # was previously dropped from every cost total shown to the user.
+        total_cost_usd = pipeline_result.total_cost_usd() + (
+            meta_response_obj["cost_usd"] if meta_response_obj else 0.0
+        )
+        check_cost_alerts(total_cost_usd)
+
+        # 6. Storage
         store = HistoryStore()
         query_id = await store.save_query(question, fact_set, domain_profile)
         for r in pipeline_result.results:
@@ -108,7 +118,7 @@ def run_pipeline_task(
             query_id,
             final_decision,
             conflict_report,
-            total_cost_usd=pipeline_result.total_cost_usd(),
+            total_cost_usd=total_cost_usd,
         )
         vs = VectorStore()
         vs.add(
@@ -165,7 +175,7 @@ def run_pipeline_task(
             "agent_results": agent_outputs,
             "failed_agents": pipeline_result.failed_agent_names,
             "meta_ai_result": meta_response_obj,
-            "total_cost_usd": pipeline_result.total_cost_usd(),
+            "total_cost_usd": total_cost_usd,
             "pipeline_latency_ms": elapsed_ms,
         }
 

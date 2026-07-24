@@ -74,6 +74,7 @@ class BaseAgent(ABC):
         fact_set: list[str],
         domain_profile: Optional[str] = None,
         model_override: Optional[str] = None,
+        trace_id: Optional[str] = None,
     ) -> AgentResult:
         """
         Full reasoning pipeline for this agent:
@@ -88,6 +89,8 @@ class BaseAgent(ABC):
             fact_set:       List of verified facts.
             domain_profile: Optional domain context string.
             model_override: Override the default model for this agent.
+            trace_id:       Optional id grouping this call with sibling
+                             agents' calls into one LangFuse trace (CP17).
 
         Returns:
             AgentResult — always returned, even on failure (check .success)
@@ -114,6 +117,7 @@ class BaseAgent(ABC):
             system_prompt=prompt.system,
             user_prompt=prompt.user,
             model_override=model_override,
+            trace_id=trace_id,
         )
 
         if not llm_response.success:

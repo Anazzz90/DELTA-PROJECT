@@ -25,6 +25,7 @@ class MetaAIResponse(BaseModel):
     minority_views: list[str]
     final_confidence: float
     supporting_agents: list[str]
+    cost_usd: float = 0.0
 
 
 class QueryResponse(BaseModel):

@@ -43,6 +43,7 @@ from agents.intuition import IntuitionAgent
 from agents.neutral_analyst import NeutralAnalyst
 from agents.skeptic import SkepticAgent
 from core.schemas import AgentResult
+from observability.tracer import new_trace_id
 
 logger = logging.getLogger(__name__)
 
@@ -151,15 +152,16 @@ class Pipeline:
         Returns:
             PipelineResult with all agent outputs and timing data.
         """
+        trace_id = new_trace_id()
         logger.info(
             f"Pipeline starting | agents={[a.name for a in self.agents]} | "
-            f"question='{question[:60]}...'"
+            f"trace_id={trace_id} | question='{question[:60]}...'"
         )
         start = time.perf_counter()
 
         # Run all agents concurrently — each in its own asyncio task
         tasks = [
-            self._run_agent_safe(agent, question, fact_set, domain_profile)
+            self._run_agent_safe(agent, question, fact_set, domain_profile, trace_id)
             for agent in self.agents
         ]
         results: list[AgentResult] = await asyncio.gather(*tasks)
@@ -190,6 +192,7 @@ class Pipeline:
         question: str,
         fact_set: list[str],
         domain_profile: Optional[str],
+        trace_id: Optional[str] = None,
     ) -> AgentResult:
         """
         Run a single agent inside a thread pool (LLM calls are blocking I/O).
@@ -201,7 +204,7 @@ class Pipeline:
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
                 None,  # default ThreadPoolExecutor
-                lambda: agent.run(question, fact_set, domain_profile),
+                lambda: agent.run(question, fact_set, domain_profile, trace_id=trace_id),
             )
             return result
         except Exception as e:

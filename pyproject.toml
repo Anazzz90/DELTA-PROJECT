@@ -66,6 +66,21 @@ alembic = "^1.13"
 psycopg = {version = "^3.1", extras = ["binary", "pool"]}
 
 # =============================================================================
+# CHECKPOINT 17 — LangFuse Observability
+# Run: poetry install --with observability
+# NOTE: langfuse 2.x's generated API client uses pydantic's `v1` compat shim,
+#       which crashes at import time on Python 3.14 ("unable to infer type
+#       for attribute" ConfigError — a pydantic/Python 3.14 incompatibility,
+#       not a DMARS bug). langfuse 4.x dropped that codegen path and imports
+#       cleanly (tested directly against litellm's callback integration).
+# =============================================================================
+[tool.poetry.group.observability]
+optional = true
+
+[tool.poetry.group.observability.dependencies]
+langfuse = "^4.0"
+
+# =============================================================================
 # Dev tools — always installed
 # =============================================================================
 [tool.poetry.group.dev.dependencies]

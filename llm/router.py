@@ -41,6 +41,7 @@ import litellm
 
 from config.settings import settings
 from llm.resilience import call_with_retry
+from observability.tracer import configure_langfuse, log_generation
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +130,7 @@ class LLMRouter:
 
     def __init__(self) -> None:
         self._configure_api_keys()
+        configure_langfuse()
 
     def _configure_api_keys(self) -> None:
         """Inject API keys from settings into LiteLLM."""
@@ -152,6 +154,7 @@ class LLMRouter:
         user_prompt: str,
         model_override: Optional[str] = None,
         temperature: float = 0.3,
+        trace_id: Optional[str] = None,
     ) -> LLMResponse:
         """
         Make a single LLM call for the given agent.
@@ -162,6 +165,10 @@ class LLMRouter:
             user_prompt:    Rendered user prompt from delta_protocol.py
             model_override: Override the default model (useful for testing)
             temperature:    Sampling temperature (0.3 = consistent, analytical)
+            trace_id:       Optional id grouping this call with sibling agent
+                             calls from the same pipeline run into one
+                             LangFuse trace (Checkpoint 17). No-op if
+                             tracing is disabled.
 
         Returns:
             LLMResponse with content, usage, cost, and latency.
@@ -216,6 +223,11 @@ class LLMRouter:
                 latency_ms=round(elapsed_ms, 2),
             )
             logger.info(f"[{agent_name}] OK — {resp.cost_summary()}")
+            log_generation(
+                trace_id, agent_name, model, messages, content,
+                prompt_tokens, completion_tokens, total_tokens,
+                resp.cost_usd, resp.latency_ms,
+            )
             return resp
 
         except Exception as e:
@@ -223,6 +235,11 @@ class LLMRouter:
             logger.error(
                 f"Agent {agent_name} failed after 3 retries — skipping "
                 f"({type(e).__name__}: {e})"
+            )
+            log_generation(
+                trace_id, agent_name, model, messages, "",
+                latency_ms=round(elapsed_ms, 2),
+                error=f"{type(e).__name__}: {e}",
             )
             return LLMResponse(
                 agent_name=agent_name,

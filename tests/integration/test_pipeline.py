@@ -150,7 +150,7 @@ class TestPipelineBasic:
         """
         import time as time_mod
 
-        def slow_run(self, question, fact_set, domain_profile=None):
+        def slow_run(self, question, fact_set, domain_profile=None, **kwargs):
             time_mod.sleep(0.3)
             return AgentResult(
                 agent_name=self.name,
