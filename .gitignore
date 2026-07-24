@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Poetry
+poetry.lock         # Commit this in real projects; ignored here for simplicity
+
+# Environment secrets — NEVER COMMIT
+.env
+
+# SQLite database (Phase 1 dev)
+*.db
+*.sqlite3
+
+# ChromaDB local storage
+chroma_db/
+
+# Pytest cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Docker
+docker-volumes/

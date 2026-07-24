@@ -1,0 +1,80 @@
+[tool.poetry]
+name = "dmars"
+version = "0.1.0"
+description = "Delta-First Multi-AI Reasoning System — A modular multi-agent AI reasoning system for high-stakes decision-making."
+authors = ["DMARS Team"]
+readme = "README.md"
+
+# =============================================================================
+# CHECKPOINT 1 — Core only (installs cleanly, no C++ compiler needed)
+# Run: poetry install
+# =============================================================================
+[tool.poetry.dependencies]
+python = "^3.11"
+python-dotenv = "^1.0"
+pydantic = "^2.0"
+pydantic-settings = "^2.0"
+pyyaml = "^6.0"
+jinja2 = "^3.1"
+tenacity = "^8.0"
+aiohttp = "^3.9"
+
+# LiteLLM — LLM routing (needed from Checkpoint 4 onward)
+litellm = "^1.40"
+
+# =============================================================================
+# CHECKPOINT 9 — Storage (SQLite + SQLAlchemy)
+# Run: poetry install --with storage
+# NOTE: chromadb requires Microsoft C++ Build Tools on Windows.
+#       Install separately when needed: pip install chromadb
+# =============================================================================
+[tool.poetry.group.storage]
+optional = true
+
+[tool.poetry.group.storage.dependencies]
+sqlalchemy = "^2.0"
+aiosqlite = "^0.20"
+
+# =============================================================================
+# CHECKPOINT 10 — Dashboard (Streamlit)
+# Run: poetry install --with dashboard
+# =============================================================================
+[tool.poetry.group.dashboard]
+optional = true
+
+[tool.poetry.group.dashboard.dependencies]
+streamlit = "^1.35"
+
+# =============================================================================
+# CHECKPOINT 13+ — Phase 2 Backend (FastAPI, Redis, RQ)
+# Run: poetry install --with phase2
+# NOTE: asyncpg also requires C++ Build Tools on Windows.
+#       Alternative: use psycopg2-binary instead (no compilation needed).
+# =============================================================================
+[tool.poetry.group.phase2]
+optional = true
+
+[tool.poetry.group.phase2.dependencies]
+fastapi = "^0.111"
+uvicorn = {version = "^0.30", extras = ["standard"]}
+redis = "^5.0"
+rq = "^1.16"
+alembic = "^1.13"
+
+# =============================================================================
+# Dev tools — always installed
+# =============================================================================
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+pytest-asyncio = "^0.23"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (full pipeline end-to-end, concurrent queries)",
+]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

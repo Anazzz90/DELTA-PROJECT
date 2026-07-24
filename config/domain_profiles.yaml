@@ -1,0 +1,53 @@
+# Domain Profiles Configuration
+# ================================
+# Pre-configured reasoning profiles for different decision domains.
+# Each profile adjusts agent weighting, confidence thresholds, and reasoning focus.
+#
+# Built in: Checkpoint 22 — Domain Profiles (Phase 3)
+# Used in:  core/pipeline.py, core/scoring_engine.py
+#
+# PLACEHOLDER — Full implementation in Checkpoint 22.
+
+profiles:
+  intraday_trading:
+    description: "Short time horizon, high volatility sensitivity"
+    confidence_threshold: 0.60      # Lower bar — fast decisions needed
+    agent_weights:
+      neutral_analyst: 0.20
+      contrarian: 0.25              # Weighted higher — challenge groupthink
+      data_first: 0.20
+      skeptic: 0.25                 # Weighted higher — stress-test conclusions
+      intuition: 0.10
+    hypothesis_clusters:
+      - BREAKOUT
+      - MANIPULATION
+      - NEWS_DRIVEN
+      - RETAIL_HYPE
+      - LIQUIDATION_CASCADE
+
+  macro_analysis:
+    description: "Longer horizon, structural driver focus"
+    confidence_threshold: 0.70      # Higher bar — more deliberation needed
+    agent_weights:
+      neutral_analyst: 0.30         # Weighted higher — balance is key
+      contrarian: 0.20
+      data_first: 0.25              # Data matters more for macro
+      skeptic: 0.15
+      intuition: 0.10
+    hypothesis_clusters:
+      - MONETARY_POLICY
+      - STRUCTURAL_SHIFT
+      - GEOPOLITICAL
+      - SUPPLY_CHAIN
+      - FISCAL_STIMULUS
+
+  general:
+    description: "Domain-agnostic default — balanced weighting"
+    confidence_threshold: 0.65
+    agent_weights:
+      neutral_analyst: 0.25
+      contrarian: 0.20
+      data_first: 0.20
+      skeptic: 0.20
+      intuition: 0.15
+    hypothesis_clusters: []

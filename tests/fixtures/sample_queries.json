@@ -1,0 +1,51 @@
+[
+  {
+    "id": "btc_spike",
+    "description": "Intraday BTC price spike with volume data",
+    "question": "Why did BTC spike 8% in the last hour?",
+    "fact_set": [
+      "BTC volume up 3x in 60 minutes",
+      "Large derivatives positions liquidated",
+      "No major news reported in that window"
+    ],
+    "domain_profile": "intraday_trading"
+  },
+  {
+    "id": "eth_drop",
+    "description": "ETH price drop with on-chain context",
+    "question": "What caused the 12% ETH price drop overnight?",
+    "fact_set": [
+      "ETH fell from $3,200 to $2,816 between 2am and 6am UTC",
+      "Whale wallet moved 45,000 ETH to Coinbase at 1:48am UTC",
+      "Gas fees spiked to 180 gwei during the sell-off",
+      "No protocol vulnerabilities reported"
+    ],
+    "domain_profile": "intraday_trading"
+  },
+  {
+    "id": "startup_churn",
+    "description": "B2B SaaS startup experiencing sudden user churn",
+    "question": "Why did our SaaS product lose 18% of users last month?",
+    "fact_set": [
+      "Monthly active users dropped from 4,200 to 3,444",
+      "A competitor launched a free tier on the 3rd of the month",
+      "Our pricing page was updated on the 1st of the month",
+      "Support tickets increased 34% in the same period",
+      "No major product bugs were reported"
+    ],
+    "domain_profile": "general"
+  },
+  {
+    "id": "factory_downtime",
+    "description": "Manufacturing line unexplained stoppage",
+    "question": "What caused the 4-hour production line stoppage in Sector B?",
+    "fact_set": [
+      "Line B stopped at 14:32 on Tuesday",
+      "A scheduled maintenance check was completed at 13:00 the same day",
+      "Sensor log shows temperature spike in Motor Unit 3 at 14:28",
+      "The last oil change for Motor Unit 3 was 6 weeks ago",
+      "No operator error was logged"
+    ],
+    "domain_profile": "general"
+  }
+]
