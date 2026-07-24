@@ -60,6 +60,10 @@ class Settings(BaseSettings):
     langfuse_secret_key: str = ""
     langfuse_host: str = "https://cloud.langfuse.com"
 
+    # ── Auth & Rate Limiting (Checkpoint 19) ──────────────────────────────────
+    admin_secret: str = ""              # gates POST /auth/create-key; empty = disabled
+    rate_limit_per_minute: int = 10     # per-API-key request cap
+
     # ── Computed Properties ───────────────────────────────────────────────────
     @property
     def prompts_dir(self) -> Path:

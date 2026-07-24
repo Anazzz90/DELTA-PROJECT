@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import health, query, history, agents, research
+from api.routes import health, query, history, agents, research, auth
 from db.session import create_all_tables
 
 
@@ -34,3 +34,4 @@ app.include_router(query.router)
 app.include_router(history.router)
 app.include_router(agents.router)
 app.include_router(research.router)
+app.include_router(auth.router)

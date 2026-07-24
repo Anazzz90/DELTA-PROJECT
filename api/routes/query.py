@@ -13,11 +13,13 @@
 import os
 from typing import Union
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from redis import Redis, ConnectionError as RedisConnectionError
 from rq import Queue
 from rq.job import Job, NoSuchJobError
 
+from api.middleware.auth import verify_api_key
+from api.middleware.rate_limiter import enforce_rate_limit
 from api.schemas.query_schema import QueryRequest
 from api.schemas.response_schema import (
     AgentOutputResponse,
@@ -51,7 +53,12 @@ def _get_redis() -> Redis:
 
 # ── POST /query — enqueue the pipeline job ────────────────────────────────────
 
-@router.post("/query", response_model=EnqueuedResponse, status_code=202)
+@router.post(
+    "/query",
+    response_model=EnqueuedResponse,
+    status_code=202,
+    dependencies=[Depends(enforce_rate_limit)],
+)
 async def analyze_query(request: QueryRequest) -> EnqueuedResponse:
     """
     Enqueue a DMARS reasoning pipeline job.
@@ -99,7 +106,11 @@ async def analyze_query(request: QueryRequest) -> EnqueuedResponse:
 
 # ── GET /query/{job_id}/status — poll for result ──────────────────────────────
 
-@router.get("/query/{job_id}/status", response_model=JobStatusResponse)
+@router.get(
+    "/query/{job_id}/status",
+    response_model=JobStatusResponse,
+    dependencies=[Depends(verify_api_key)],
+)
 async def get_job_status(job_id: str) -> JobStatusResponse:
     """
     Poll the status of an enqueued pipeline job.

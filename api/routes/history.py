@@ -1,10 +1,11 @@
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from api.middleware.auth import verify_api_key
 from memory.history import HistoryStore
 
-router = APIRouter(tags=["History"])
+router = APIRouter(tags=["History"], dependencies=[Depends(verify_api_key)])
 
 @router.get("/history", response_model=list[dict[str, Any]])
 async def get_history(limit: int = 20):

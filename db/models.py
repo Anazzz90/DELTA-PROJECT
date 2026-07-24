@@ -117,3 +117,26 @@ class FinalDecisionRow(Base):
 
     def __repr__(self) -> str:
         return f"<FinalDecisionRow query_id={self.query_id} confidence={self.system_confidence_score}>"
+
+
+# =============================================================================
+# ApiKey — Checkpoint 19: API key authentication
+# =============================================================================
+# Only the SHA-256 hash of each key is stored -- the plaintext key is shown
+# to the caller exactly once, at creation time, and never persisted.
+
+class ApiKeyRow(Base):
+    __tablename__ = "api_keys"
+
+    id:            Mapped[int]      = mapped_column(Integer, primary_key=True, autoincrement=True)
+    key_hash:      Mapped[str]      = mapped_column(String(64), nullable=False, unique=True)
+    key_prefix:    Mapped[str]      = mapped_column(String(16), nullable=False)
+    name:          Mapped[str]      = mapped_column(String(128), nullable=False)
+    is_active:     Mapped[bool]     = mapped_column(Boolean, nullable=False, default=True)
+    created_at:    Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow, nullable=False
+    )
+    last_used_at:  Mapped[datetime.datetime|None] = mapped_column(DateTime, nullable=True)
+
+    def __repr__(self) -> str:
+        return f"<ApiKeyRow prefix={self.key_prefix} name='{self.name}' active={self.is_active}>"

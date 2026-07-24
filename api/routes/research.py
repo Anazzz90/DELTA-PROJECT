@@ -1,11 +1,13 @@
 import os
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from redis import Redis, ConnectionError as RedisConnectionError
 from rq import Queue
 from rq.job import Job, NoSuchJobError
 
+from api.middleware.auth import verify_api_key
+from api.middleware.rate_limiter import enforce_rate_limit
 from config.settings import settings
 from task_queue.tasks import run_research_task
 from api.schemas.response_schema import EnqueuedResponse
@@ -53,7 +55,12 @@ def _get_redis() -> Redis:
             detail=f"Redis is unavailable ({exc}).",
         )
 
-@router.post("/research", response_model=EnqueuedResponse, status_code=202)
+@router.post(
+    "/research",
+    response_model=EnqueuedResponse,
+    status_code=202,
+    dependencies=[Depends(enforce_rate_limit)],
+)
 async def start_research(request: ResearchRequest) -> EnqueuedResponse:
     if not request.url and not request.topic:
         raise HTTPException(status_code=422, detail="Either URL or Topic must be provided")
@@ -83,7 +90,11 @@ async def start_research(request: ResearchRequest) -> EnqueuedResponse:
         poll_url=f"/research/{job.id}/status",
     )
 
-@router.get("/research/{job_id}/status", response_model=ResearchJobStatusResponse)
+@router.get(
+    "/research/{job_id}/status",
+    response_model=ResearchJobStatusResponse,
+    dependencies=[Depends(verify_api_key)],
+)
 async def get_research_status(job_id: str) -> ResearchJobStatusResponse:
     redis_conn = _get_redis()
 
