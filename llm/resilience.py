@@ -1,13 +1,17 @@
 """
 llm/resilience.py
 ==================
-Checkpoint 4 — Tenacity Retry + Circuit Breaker
+Checkpoint 4 (retry) / Checkpoint 16 (full resilience layer)
 
 Wraps raw LiteLLM calls with:
-  - 3 retry attempts with exponential backoff (2s → 4s → 8s)
+  - 3 retries with exponential backoff (2s → 4s → 8s), 4 attempts total
   - Retry only on transient errors (rate limits, timeouts, connection issues)
   - No retry on permanent errors (auth failures, bad requests)
   - Structured logging before each retry attempt
+  - Circuit breaker: after all retries are exhausted, the agent is marked
+    FAILED (llm/router.py converts the raised exception into an
+    LLMResponse with `.error` set) and the pipeline continues without it
+    (core/pipeline.py never lets one agent's failure abort the others).
 
 Usage (internal — called by llm/router.py):
     from llm.resilience import call_with_retry
@@ -54,8 +58,8 @@ NON_RETRYABLE_EXCEPTIONS = (
 
 @retry(
     reraise=True,                                       # Raise original exception after all retries
-    stop=stop_after_attempt(3),                         # Max 3 attempts
-    wait=wait_exponential(multiplier=1, min=2, max=8),  # 2s → 4s → 8s backoff
+    stop=stop_after_attempt(4),                         # 1 initial attempt + 3 retries
+    wait=wait_exponential(multiplier=2, min=2, max=8),  # 2s → 4s → 8s backoff
     retry=retry_if_exception_type(RETRYABLE_EXCEPTIONS),
     before_sleep=before_sleep_log(logger, logging.WARNING),
 )
@@ -73,7 +77,10 @@ def call_with_retry(
       Attempt 1: immediate
       Attempt 2: wait ~2s
       Attempt 3: wait ~4s
-      After 3rd failure: raises the original exception
+      Attempt 4: wait ~8s
+      After the 4th failure (3 retries exhausted): raises the original
+      exception — the circuit breaker trips, and the caller (llm/router.py)
+      converts this into a failed LLMResponse rather than crashing.
 
     Args:
         model:       LiteLLM model string (e.g. "gpt-4o-mini", "groq/mixtral-8x7b-32768")
@@ -86,8 +93,8 @@ def call_with_retry(
         Raw LiteLLM ModelResponse object
 
     Raises:
-        litellm.exceptions.RateLimitError: After 3 failed rate-limited attempts
-        litellm.exceptions.Timeout:        After 3 timed-out attempts
+        litellm.exceptions.RateLimitError: After all retries exhausted
+        litellm.exceptions.Timeout:        After all retries exhausted
         litellm.exceptions.AuthenticationError: Immediately (not retried)
     """
     return litellm.completion(

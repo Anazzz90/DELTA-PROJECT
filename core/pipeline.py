@@ -78,6 +78,11 @@ class PipelineResult:
     def failed_results(self) -> list[AgentResult]:
         return [r for r in self.results if not r.success]
 
+    @property
+    def failed_agent_names(self) -> list[str]:
+        """Names of agents that failed (circuit breaker tripped) — Checkpoint 16."""
+        return [r.agent_name for r in self.failed_results]
+
     def total_cost_usd(self) -> float:
         return sum(r.cost_usd for r in self.results)
 

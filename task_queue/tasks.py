@@ -163,6 +163,7 @@ def run_pipeline_task(
             "conflict_type": conflict_report.conflict_type,
             "dominant_narratives": final_decision.dominant_narratives,
             "agent_results": agent_outputs,
+            "failed_agents": pipeline_result.failed_agent_names,
             "meta_ai_result": meta_response_obj,
             "total_cost_usd": pipeline_result.total_cost_usd(),
             "pipeline_latency_ms": elapsed_ms,

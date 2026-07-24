@@ -217,6 +217,30 @@ class TestPipelineFaultTolerance:
         assert len(result.successful_results) == 2
         assert len(result.failed_results) == 1
         assert result.failed_results[0].agent_name == "skeptic"
+        assert result.failed_agent_names == ["skeptic"]
+
+    def test_two_failed_agents_both_named_in_failed_agent_names(self):
+        """Checkpoint 16: multiple circuit-breaker trips are all surfaced by name."""
+        neutral_output = make_agent_output("Liquidation cascade")
+        neutral_resp = make_llm_response(neutral_output.model_dump_json(), "neutral_analyst")
+
+        def failed(agent_name: str, error: str) -> LLMResponse:
+            return LLMResponse(agent_name=agent_name, model="test-model", content="", error=error)
+
+        neutral = NeutralAnalyst()
+        data    = DataFirstAgent()
+        skeptic = SkepticAgent()
+
+        neutral._router = type("R", (), {"call": lambda self, **kw: neutral_resp})()
+        data._router    = type("R", (), {"call": lambda self, **kw: failed("data_first", "RateLimitError: quota exceeded")})()
+        skeptic._router = type("R", (), {"call": lambda self, **kw: failed("skeptic", "Timeout: request timed out")})()
+
+        pipeline = Pipeline(agents=[neutral, data, skeptic])
+        result = asyncio.run(pipeline.run(QUESTION, FACTS))
+
+        assert result.agents_succeeded == 1
+        assert result.agents_failed == 2
+        assert sorted(result.failed_agent_names) == ["data_first", "skeptic"]
 
     def test_failed_agent_result_has_error_message(self):
         failed_resp = LLMResponse(

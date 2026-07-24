@@ -40,6 +40,7 @@ class QueryResponse(BaseModel):
     conflict_type: str
     dominant_narratives: list[str]
     agent_results: list[AgentOutputResponse]
+    failed_agents: list[str] = []
     meta_ai_result: Optional[MetaAIResponse] = None
     total_cost_usd: float
     pipeline_latency_ms: float

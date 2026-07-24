@@ -153,6 +153,7 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
             conflict_type=raw["conflict_type"],
             dominant_narratives=raw["dominant_narratives"],
             agent_results=agent_results,
+            failed_agents=raw.get("failed_agents", []),
             meta_ai_result=meta_ai_result,
             total_cost_usd=raw["total_cost_usd"],
             pipeline_latency_ms=raw["pipeline_latency_ms"],

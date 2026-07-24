@@ -220,7 +220,10 @@ class LLMRouter:
 
         except Exception as e:
             elapsed_ms = (time.perf_counter() - start) * 1000
-            logger.error(f"[{agent_name}] FAILED after retries: {type(e).__name__}: {e}")
+            logger.error(
+                f"Agent {agent_name} failed after 3 retries — skipping "
+                f"({type(e).__name__}: {e})"
+            )
             return LLMResponse(
                 agent_name=agent_name,
                 model=model,
