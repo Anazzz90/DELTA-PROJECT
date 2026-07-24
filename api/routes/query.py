@@ -26,11 +26,12 @@ from api.schemas.response_schema import (
     MetaAIResponse,
     QueryResponse,
 )
+from config.settings import settings
 from task_queue.tasks import AGENT_MAPPING, run_pipeline_task
 
 router = APIRouter(tags=["Query"])
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+REDIS_URL = settings.redis_url
 QUEUE_NAME = "dmars-queue"
 JOB_TIMEOUT = 600  # 10 minutes — long enough for the full 5-agent pipeline
 

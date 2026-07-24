@@ -9,6 +9,8 @@ from redis import Redis
 from rq import Queue
 from rq.timeouts import BaseDeathPenalty
 
+from config.settings import settings
+
 # ── Windows compatibility ─────────────────────────────────────────────────────
 # On Windows, os.fork() and signal.SIGALRM do not exist.
 # We use SimpleWorker (no child process) and NopDeathPenalty (no SIGALRM).
@@ -34,7 +36,7 @@ else:
     from rq import Worker  # type: ignore[assignment]
     NopDeathPenalty = None  # type: ignore[assignment,misc]
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+REDIS_URL = settings.redis_url
 QUEUE_NAME = "dmars-queue"
 
 

@@ -22,6 +22,11 @@ import time
 import logging
 from pathlib import Path
 
+# This is a manual script, not a pytest suite (its test_* functions take a
+# positional `router` arg with no fixture behind it) — tell pytest to leave
+# it alone rather than erroring on "fixture 'router' not found".
+__test__ = False
+
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 

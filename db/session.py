@@ -25,7 +25,6 @@ Usage:
 from __future__ import annotations
 
 import logging
-import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
@@ -36,6 +35,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from config.settings import settings
 from db.models import Base
 
 logger = logging.getLogger(__name__)
@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_DB_PATH = Path(__file__).parent.parent / "dmars.db"
 _DEFAULT_DB_URL  = f"sqlite+aiosqlite:///{_DEFAULT_DB_PATH}"
 
-DATABASE_URL: str = os.getenv("DATABASE_URL", _DEFAULT_DB_URL)
+DATABASE_URL: str = settings.database_url or _DEFAULT_DB_URL
 
 # Create the async engine — module-level singleton
 engine = create_async_engine(

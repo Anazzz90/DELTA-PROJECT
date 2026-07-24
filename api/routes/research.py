@@ -6,12 +6,13 @@ from redis import Redis, ConnectionError as RedisConnectionError
 from rq import Queue
 from rq.job import Job, NoSuchJobError
 
+from config.settings import settings
 from task_queue.tasks import run_research_task
 from api.schemas.response_schema import EnqueuedResponse
 
 router = APIRouter(tags=["Research"])
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+REDIS_URL = settings.redis_url
 QUEUE_NAME = "dmars-queue"
 JOB_TIMEOUT = 300  # 5 minutes
 
